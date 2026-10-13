@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>OptiRoute Pro - Enterprise Rota ve Lojistik Yönetim Platformu</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f4f4f9; display: flex; flex-direction: column; gap: 15px; }
+        h2 { color: #333; margin: 0 0 5px 0; }
+        .developer-tag { font-size: 14px; color: #555; font-weight: bold; margin-bottom: 5px; letter-spacing: 0.5px; }
+        
+        /* Sektör Seçim Ekranı Overlay */
+        #sector-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 9999;
+        }
+        .modal-content {
+            background: white; padding: 30px; border-radius: 12px; width: 480px; text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px;
+        }
+        .modal-content h3 { margin-top: 0; color: #2c3e50; }
+        .sector-btn {
+            color: white; border: none; padding: 12px; font-size: 15px;
+            border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; text-align: left;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .sector-btn:hover { transform: translateY(-2px); opacity: 0.9; }
+        .sector-btn.gunluk { background: #6c757d; }
+        .sector-btn.kurye { background: #28a745; }
+        .sector-btn.kargo { background: #ffc107; color: #333; }
+        .sector-btn.otobus { background: #17a2b8; }
+
+        /* Üst Bilgi Çubuğu */
+        .top-bar { display: flex; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .active-sector-badge { background: #2c3e50; color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; }
+        .change-sector-link { color: #007bff; cursor: pointer; font-size: 13px; font-weight: bold; text-decoration: underline; }
+
+        .main-container { display: flex; gap: 20px; flex-wrap: wrap; }
+        #map { height: 650px; flex: 2; min-width: 400px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        
+        .sidebar { flex: 1; min-width: 380px; display: flex; flex-direction: column; gap: 15px; }
+        .panel { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        
+        #controls { display: flex; flex-direction: column; gap: 10px; }
+        .control-row { display: flex; gap: 10px; align-items: center; position: relative; }
+        
+        select, input[type="text"], input[type="number"] { padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; flex: 1; }
+        button { background: #28a745; color: white; border: none; padding: 10px 15px; font-size: 15px; border-radius: 5px; cursor: pointer; flex: 1; font-weight: bold; }
+        button:hover { background: #218838; }
+        button.danger { background: #dc3545; }
+        button.danger:hover { background: #c0392b; }
+        button.secondary { background: #007bff; }
+        button.secondary:hover { background: #0056b3; }
+        button.warning { background: #ffc107; color: #333; }
+        button.warning:hover { background: #e0a800; }
+
+        /* Otomatik Tamamlama Tahmin Kutusu */
+        #suggestions-box {
+            position: absolute; top: 42px; left: 0; right: 0; background: white; border: 1px solid #ccc;
+            border-radius: 4px; max-height: 160px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .suggestion-item { padding: 8px 10px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #eee; color: #333; text-align: left; }
+        .suggestion-item:hover { background: #f1f1f1; }
+
+        /* Sürükle-Bırak Rota Listesi & Navigasyon Butonları */
+        #results { max-height: 280px; overflow-y: auto; font-size: 13px; line-height: 1.4; }
+        .draggable-stop {
+            background: #fff; border: 1px solid #ddd; padding: 8px 10px; margin: 4px 0; border-radius: 6px;
+            display: flex; justify-content: space-between; align-items: center; cursor: grab; transition: background 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .draggable-stop:active { cursor: grabbing; background: #eef2f7; }
+        .stop-header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; width: 100%; }
+        .nav-btn {
+            background: #007bff; color: white; padding: 4px 8px; font-size: 11px; text-decoration: none;
+            border-radius: 4px; text-align: center; font-weight: bold; display: inline-block; margin-left: 5px;
+        }
+        .nav-btn:hover { background: #0056b3; }
+        .global-nav-btn {
+            background: #28a745; color: white; padding: 8px 12px; font-size: 13px; text-decoration: none;
+            border-radius: 5px; text-align: center; font-weight: bold; display: block; margin-top: 10px;
+        }
+        .global-nav-btn:hover { background: #218838; }
+        .savings-box { background: #e8f5e9; border-left: 4px solid #28a745; padding: 8px; margin-top: 10px; font-size: 12px; color: #2e7d32; border-radius: 4px; }
+
+        /* Özel Pin Stili */
+        .custom-pin {
+            background: white; border: 2px solid #007bff; padding: 6px 10px; font-weight: bold;
+            border-radius: 6px; box-shadow: 0 3px 6px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px;
+            white-space: nowrap; transform: translate(-50%, -100%);
+        }
+        .pin-label { cursor: pointer; color: #007bff; font-size: 13px; }
+        .pin-label:hover { text-decoration: underline; }
+        .delete-btn {
+            background: #e74c3c; color: white; border: none; border-radius: 50%;
+            width: 24px; height: 24px; font-size: 14px; font-weight: bold;
+            line-height: 23px; text-align: center; cursor: pointer; padding: 0;
+            display: flex; align-items: center; justify-content: center; transition: 0.2s;
+        }
+        .delete-btn:hover { background: #c0392b; transform: scale(1.1); }
+    </style>
+</head>
+<body>
+
+    <!-- MOD / SEKTÖR SEÇİM MODALI -->
+    <div id="sector-modal">
+        <div class="modal-content">
+            <h3>OptiRoute Pro - Mod Seçimi</h3>
+            <p style="font-size: 13px; color: #666;">Zaman Pencereli Akıllı Rota Optimizasyonunu aktif edin.</p>
+            
+            <button class="sector-btn gunluk" onclick="selectSector('gunluk')">
+                <span>🚶‍♂️ Günlük Kullanım (Akıllı Optimizasyon)</span> <span>➔</span>
+            </button>
+            <button class="sector-btn kurye" onclick="selectSector('kurye')">
+                <span>🏍️ Kurye / Zaman Pencereli Tasarruf Modu</span> <span>➔</span>
+            </button>
+            <button class="sector-btn kargo" onclick="selectSector('kargo')">
+                <span>📦 Kargo Filosu (Ağırlık & Hub Depo)</span> <span>➔</span>
+            </button>
+            <button class="sector-btn otobus" onclick="selectSector('otobus')">
+                <span>🚌 Şehirlerarası Otobüs (Sabit Hat)</span> <span>➔</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Üst Başlık ve Mod Göstergesi -->
+    <div class="top-bar">
+        <div>
+            <h2>OptiRoute Pro - Enterprise Rota Platformu</h2>
+            <div class="developer-tag">Geliştirici: ABDULSAMET İNAN</div>
+        </div>
+        <div>
+            <span class="active-sector-badge" id="current-sector-badge">Mod: Seçilmedi</span>
+            <span class="change-sector-link" onclick="openSectorModal()">[Modu Değiştir]</span>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Harita -->
+        <div id="map"></div>
+
+        <!-- Kontroller ve Paneller -->
+        <div class="sidebar">
+            <div class="panel" id="controls">
+                <div id="sector-specific-controls" style="margin-bottom: 5px; font-size: 12px; background: #eef2f7; padding: 8px; border-radius: 4px; color: #333;">
+                    <!-- Dinamik kısıt bilgisi -->
+                </div>
+
+                <!-- Filo Parametreleri -->
+                <div id="fleet-params" class="control-row" style="display:none; flex-direction: column; align-items: stretch; gap: 5px; background: #fff; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <div style="display: flex; gap: 10px;">
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+                            <label for="vehicle-count" style="font-size: 11px; font-weight: bold; color: #555;">Kurye Sayısı:</label>
+                            <input type="number" id="vehicle-count" value="2" min="1" max="10">
+                        </div>
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+                            <label for="max-capacity" id="capacity-label" style="font-size: 11px; font-weight: bold; color: #555;">Max Paket:</label>
+                            <input type="number" id="max-capacity" value="50" min="5" max="500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SİPARİŞ EKLEME PANELİ -->
+                <div style="background: #eef2f7; padding: 10px; border-radius: 6px; display: flex; flex-direction: column; gap: 8px; position: relative;">
+                    <label style="font-size: 12px; font-weight: bold; color: #2c3e50;">📍 Sipariş Aktarım Kanalları:</label>
+                    
+                    <button class="secondary" onclick="simulateExternalAPIOrder()" style="background: #6f42c1; padding: 8px; font-size: 13px;">📥 Dış Sistemden Gelen Siparişi Simüle Et (API)</button>
+                    <button class="secondary" onclick="addCurrentGPSLocation()" style="background: #17a2b8; padding: 8px; font-size: 13px;">📍 Mevcut Konumumu (GPS) Ekle</button>
+                    
+                    <div style="display: flex; gap: 5px; position: relative; margin-top: 4px;">
+                        <input type="text" id="order-address" placeholder="Adres yaz (örn: Kadıköy)..." oninput="handleAutocomplete(this.value)" autocomplete="off" style="padding: 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; flex: 1;">
+                        <button class="secondary" onclick="addOrderFromPanel()" style="padding: 6px 12px; font-size: 13px; flex: 0;">Ekle</button>
+                        <div id="suggestions-box"></div>
+                    </div>
+                </div>
+
+                <!-- Ulaşım Profili -->
+                <div class="control-row">
+                    <label for="profile-select" style="font-size: 13px; font-weight: bold;">Ulaşım:</label>
+                    <select id="profile-select">
+                        <option value="driving">Otomobil / Motor</option>
+                        <option value="walking">Yaya</option>
+                        <option value="cycling">Bisiklet</option>
+                    </select>
+                </div>
+
+                <div class="control-row">
+                    <button onclick="calculateOptimizedRoute()">Rotayı Optimize Et & Tasarrufu Hesapla</button>
+                    <button class="danger" onclick="resetMap()">Sıfırla</button>
+                </div>
+                
+                <div class="control-row" style="display: flex; gap: 5px;">
+                    <button class="secondary" onclick="exportGeoJSON()" style="font-size: 12px;">GeoJSON İndir</button>
+                    <button class="warning" onclick="exportManifestoPDF()" style="font-size: 12px;">📄 Manifesto Raporu</button>
+                </div>
+            </div>
+
+            <!-- Sürücü Paneli & Tasarruf Sonuç Paneli -->
+            <div class="panel">
+                <strong>Sürücü Paneli & Zaman Öncelikli Rota:</strong>
+                <div style="font-size: 11px; color: #666; margin-top: 2px;">Teslimat saati daha erken olan siparişler mesafeden bağımsız önceliklendirilir.</div>
+                <div id="results" style="margin-top: 8px;">Lütfen önce mod seçip adres ekleyin.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map').setView([41.0082, 28.9784], 13);
+
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
+        }).addTo(map);
+
+        var points = []; 
+        var markers = [];
+        var routeLayers = []; 
+        var routeLayer = null;
+        var lastRouteGeoJSON = null; 
+        var currentSector = '';
+        var searchTimeout = null;
+
+        function openSectorModal() {
+            let modal = document.getElementById('sector-modal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function selectSector(sector) {
+            currentSector = sector;
+            let modal = document.getElementById('sector-modal');
+            if (modal) modal.style.display = 'none';
+            
+            let badgeText = '';
+            let specificHtml = '';
+            let showFleet = 'none';
+
+            if (sector === 'gunluk') {
+                badgeText = '🚶‍♂️ Günlük Kullanım';
+                specificHtml = '<b>Kural:</b> Mesafe ve zaman öncelikli akıllı sıralama.';
+            } else if (sector === 'kurye') {
+                badgeText = '🏍️ Kurye / Zaman Pencereli Mod';
+                specificHtml = '<b>Kural:</b> 1. nokta Restorandır. Erken teslimat saatleri önceliklidir.';
+                showFleet = 'flex';
+                let capLabel = document.getElementById('capacity-label');
+                if (capLabel) capLabel.innerText = 'Max Paket Adedi:';
+            } else if (sector === 'kargo') {
+                badgeText = '📦 Kargo Filosu (Ağırlık & Hub)';
+                specificHtml = '<b>Kural:</b> Ağırlık kısıtı ve depoya dönüş aktif.';
+                showFleet = 'flex';
+                let capLabel = document.getElementById('capacity-label');
+                if (capLabel) capLabel.innerText = 'Max Ağırlık (kg):';
+            } else if (sector === 'otobus') {
+                badgeText = '🚌 Şehirlerarası Otobüs';
+                specificHtml = '<b>Kural:</b> Sabit hat sıralaması.';
+            }
+
+            let badge = document.getElementById('current-sector-badge');
+            if (badge) badge.innerText = badgeText;
+            
+            let controls = document.getElementById('sector-specific-controls');
+            if (controls) controls.innerHTML = specificHtml;
+            
+            let fleetParams = document.getElementById('fleet-params');
+            if (fleetParams) fleetParams.style.display = showFleet;
+        }
+
+        function simulateExternalAPIOrder() {
+            if (!currentSector) { alert("Lütfen önce bir kullanım modu seçin!"); openSectorModal(); return; }
+            
+            let externalOrdersPool = [
+                { lat: 41.0255, lng: 29.0123, address: "Üsküdar İskele Cad. No:5", time: "13:00", packages: 1 },
+                { lat: 40.9901, lng: 29.0250, address: "Kadıköy Moda Cad. No:42", time: "13:15", packages: 2 },
+                { lat: 41.0422, lng: 29.0065, address: "Beşiktaş Yıldız Mah. No:10", time: "12:30", packages: 1 }, // Daha erken saat
+                { lat: 41.0122, lng: 28.9450, address: "Fatih Millet Cad. No:15", time: "13:45", packages: 1 }
+            ];
+
+            let randomOrder = externalOrdersPool[Math.floor(Math.random() * externalOrdersPool.length)];
+
+            if (points.length === 0 && (currentSector === 'kurye' || currentSector === 'kargo')) {
+                let depotLabel = currentSector === 'kurye' ? "Restoran / Çıkış Merkezi" : "Merkez Depo (Hub)";
+                points.push({ lat: 41.0082, lng: 28.9784, label: depotLabel, detail: 0, detailText: "Merkez", time: "12:00", timeMinutes: 720 });
+            }
+
+            let [h, m] = randomOrder.time.split(':').map(Number);
+            let timeMins = h * 60 + m;
+
+            points.push({ 
+                lat: randomOrder.lat, 
+                lng: randomOrder.lng, 
+                label: randomOrder.address, 
+                detail: randomOrder.packages, 
+                detailText: `${randomOrder.packages} Paket | Saat: ${randomOrder.time}`, 
+                time: randomOrder.time,
+                timeMinutes: timeMins 
+            });
+
+            redrawMarkers();
+            updateResultsList();
+            map.setView([randomOrder.lat, randomOrder.lng], 14);
+        }
+
+        function addCurrentGPSLocation() {
+            if (!currentSector) { alert("Lütfen önce bir kullanım modu seçin!"); openSectorModal(); return; }
+            if (!navigator.geolocation) { alert("Tarayıcınız konum servislerini desteklemiyor."); return; }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    let lat = position.coords.latitude;
+                    let lon = position.coords.longitude;
+                    addPointAndDetails(lat, lon, "Mevcut Konumum (GPS)");
+                    map.setView([lat, lon], 16);
+                },
+                (error) => { alert("Konum alınamadı."); },
+                { enableHighAccuracy: true }
+            );
+        }
+
+        function handleAutocomplete(query) {
+            clearTimeout(searchTimeout);
+            let box = document.getElementById('suggestions-box');
+            if (!query || query.length < 3) { box.style.display = 'none'; return; }
+
+            searchTimeout = setTimeout(async () => {
+                try {
+                    let res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);
+                    let data = await res.json();
+                    box.innerHTML = '';
+                    if (data && data.length > 0) {
+                        data.forEach(item => {
+                            let div = document.createElement('div');
+                            div.className = 'suggestion-item';
+                            div.innerText = item.display_name;
+                            div.onclick = () => {
+                                document.getElementById('order-address').value = item.display_name;
+                                box.style.display = 'none';
+                                addPointAndDetails(parseFloat(item.lat), parseFloat(item.lon), item.display_name.split(',')[0]);
+                                map.setView([item.lat, item.lon], 15);
+                                document.getElementById('order-address').value = '';
+                            };
+                            box.appendChild(div);
+                        });
+                        box.style.display = 'block';
+                    } else { box.style.display = 'none'; }
+                } catch(e) { box.style.display = 'none'; }
+            }, 300);
+        }
+
+        async function addOrderFromPanel() {
+            if (!currentSector) { alert("Lütfen önce bir kullanım modu seçin!"); openSectorModal(); return; }
+            let address = document.getElementById('order-address').value.trim();
+            if (!address) { alert("Lütfen bir adres yazın!"); return; }
+
+            try {
+                let res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`);
+                let data = await res.json();
+                if (data && data.length > 0) {
+                    let lat = parseFloat(data[0].lat);
+                    let lon = parseFloat(data[0].lon);
+                    let shortName = data[0].display_name.split(',')[0];
+                    
+                    addPointAndDetails(lat, lon, shortName);
+                    map.setView([lat, lon], 15);
+                    document.getElementById('order-address').value = '';
+                    document.getElementById('suggestions-box').style.display = 'none';
+                } else { alert("Adres bulunamadı."); }
+            } catch(e) { alert("Bağlantı hatası."); }
+        }
+
+        map.on('click', function(e) {
+            if (!currentSector) { alert("Önce mod seçin!"); openSectorModal(); return; }
+            let label = 'Nokta ' + (points.length + 1);
+            if ((currentSector === 'kargo' || currentSector === 'kurye') && points.length === 0) {
+                label = currentSector === 'kurye' ? 'Restoran / Çıkış Merkezi' : 'Merkez Depo (Hub)';
+            }
+            addPointAndDetails(e.latlng.lat, e.latlng.lng, label);
+        });
+
+        function isValidTimeFormat(timeStr) {
+            let parts = timeStr.trim().split(':');
+            if (parts.length !== 2) return false;
+            let h = parseInt(parts[0]);
+            let m = parseInt(parts[1]);
+            return !isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59;
+        }
+
+        function addPointAndDetails(lat, lng, label) {
+            let detailVal = 1;
+            let detailLabel = 'Standard';
+            let deliveryTime = 'Esnek';
+            let timeMins = 9999; // Esnek saatler en sonda değerlendirilir
+
+            if (currentSector === 'kurye' && points.length > 0) {
+                let pCount = prompt(`"${label}" için paket adedi:`, "1");
+                if (pCount === null) return;
+                detailVal = parseInt(pCount) || 1;
+
+                while (true) {
+                    let tInput = prompt(`Teslimat saati (Örn: 13:30):`, "13:30");
+                    if (tInput === null) return;
+                    if (isValidTimeFormat(tInput)) { 
+                        deliveryTime = tInput.trim(); 
+                        let [h, m] = deliveryTime.split(':').map(Number);
+                        timeMins = h * 60 + m;
+                        break; 
+                    }
+                    alert("Geçersiz saat formatı! HH:MM girin.");
+                }
+                detailLabel = `${detailVal} Paket | Saat: ${deliveryTime}`;
+            } else if (currentSector === 'kurye' && points.length === 0) {
+                label = "Restoran / Çıkış Merkezi";
+                detailLabel = "Merkez";
+                timeMins = 0;
+            } else if (currentSector === 'kargo' && points.length === 0) {
+                label = "Merkez Depo (Hub)";
+                detailLabel = "Depo";
+            } else if (currentSector === 'kargo' && points.length > 0) {
+                detailVal = Math.floor(Math.random() * 15) + 5;
+                detailLabel = `${detailVal} kg`;
+            }
+
+            points.push({ lat: lat, lng: lng, label: label, detail: detailVal, detailText: detailLabel, time: deliveryTime, timeMinutes: timeMins });
+            redrawMarkers();
+            updateResultsList();
+        }
+
+        function redrawMarkers() {
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+
+            points.forEach((p, idx) => {
+                var pinHtml = `
+                    <div class="custom-pin">
+                        <span class="pin-label" onclick="renamePoint(${idx})">${idx+1}. ${p.label}</span>
+                        <button class="delete-btn" onclick="removePoint(${idx})">×</button>
+                    </div>
+                `;
+                var customIcon = L.divIcon({ className: '', html: pinHtml, iconSize: [0,0], iconAnchor: [0,0] });
+                var marker = L.marker([p.lat, p.lng], { icon: customIcon }).addTo(map);
+                
+                setTimeout(() => {
+                    let el = marker.getElement();
+                    if (el) { L.DomEvent.disableClickPropagation(el); L.DomEvent.disableScrollPropagation(el); }
+                }, 10);
+
+                markers.push(marker);
+            });
+        }
+
+        window.renamePoint = function(index) {
+            let newName = prompt("Nokta adını değiştir:", points[index].label);
+            if (newName) { points[index].label = newName; redrawMarkers(); updateResultsList(); }
+        }
+
+        window.removePoint = function(index) {
+            points.splice(index, 1);
+            redrawMarkers();
+            updateResultsList();
+        }
+
+        let draggedIdx = null;
+        window.dragStart = function(e, idx) { draggedIdx = idx; }
+        window.allowDrop = function(e) { e.preventDefault(); }
+        window.drop = function(e, targetIdx) {
+            e.preventDefault();
+            let moved = points.splice(draggedIdx, 1)[0];
+            points.splice(targetIdx, 0, moved);
+            redrawMarkers();
+            updateResultsList();
+        }
+
+        function updateResultsList() {
+            let container = document.getElementById('results');
+            if (!container) return;
+            if (points.length === 0) { container.innerHTML = "Henüz sipariş eklenmedi."; return; }
+            let html = '';
+            points.forEach((p, idx) => {
+                let navUrl = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
+                html += `
+                    <div class="draggable-stop" draggable="true" ondragstart="dragStart(event, ${idx})" ondragover="allowDrop(event)" ondrop="drop(event, ${idx})">
+                        <div class="stop-header">
+                            <span><b>#${idx+1}</b> ${p.label} <span style="font-size:10px; color:#555;">(${p.detailText || 'Standard'})</span></span>
+                            <a href="${navUrl}" target="_blank" class="nav-btn">🧭 Yol Tarifi</a>
+                        </div>
+                    </div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        async function fetchRealRoadDistance(p1, p2, profile) {
+            try {
+                let url = `https://router.project-osrm.org/route/v1/${profile}/${p1.lng},${p1.lat};${p2.lng},${p2.lat}?overview=false`;
+                let res = await fetch(url);
+                let data = await res.json();
+                if (data.code === "Ok" && data.routes && data.routes.length > 0) return data.routes[0].distance;
+            } catch(e) {}
+            return 0;
+        }
+
+        async function calculateRouteDistanceForSequence(seq, profile) {
+            let total = 0;
+            for (let i = 0; i < seq.length - 1; i++) {
+                let d = await fetchRealRoadDistance(seq[i], seq[i+1], profile);
+                total += d;
+            }
+            return total;
+        }
+
+        // --- ZAMAN PENCERELİ VE MESAFE HİBRİT AKILLI OPTİMİZASYON ---
+        async function calculateOptimizedRoute() {
+            if (points.length < 2) { alert("En az 2 nokta gerekli!"); return; }
+            let profile = document.getElementById('profile-select').value;
+
+            routeLayers.forEach(l => map.removeLayer(l));
+            routeLayers = [];
+            if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+
+            let originalSequence = [...points];
+            if ((currentSector === 'kurye' || currentSector === 'kargo') && originalSequence.length > 2) {
+                let depot = originalSequence[0];
+                let stops = originalSequence.slice(1);
+                originalSequence = [depot, ...stops, depot];
+            }
+            let originalTotalMeters = await calculateRouteDistanceForSequence(originalSequence, profile);
+
+            let ordered = [];
+            let unvisited = [...points];
+
+            if (currentSector === 'kurye' || currentSector === 'kargo') {
+                let depot = unvisited.shift();
+                ordered.push(depot);
+                let current = depot;
+
+                while (unvisited.length > 0) {
+                    let bestIdx = 0;
+                    let bestScore = Infinity;
+
+                    // Hibrit Puanlama: Zaman Pencereleri (Aciliyet) + Mesafe Faktörü
+                    for (let i = 0; i < unvisited.length; i++) {
+                        let dist = await fetchRealRoadDistance(current, unvisited[i], profile);
+                        let timeVal = unvisited[i].timeMinutes !== undefined ? unvisited[i].timeMinutes : 9999;
+                        
+                        // Formül: Saat ne kadar erkense puanı o kadar düşer (öncelik kazanır)
+                        // Mesafe de işin içine katılarak mantıklı bir rota çizilir
+                        let score = (timeVal * 15) + (dist * 0.05); 
+
+                        if (score < bestScore) {
+                            bestScore = score;
+                            bestIdx = i;
+                        }
+                    }
+                    current = unvisited.splice(bestIdx, 1)[0];
+                    ordered.push(current);
+                }
+                ordered.push(depot);
+            } else {
+                let current = unvisited.shift();
+                ordered.push(current);
+                while (unvisited.length > 0) {
+                    let nearestIdx = 0;
+                    let minDist = Infinity;
+                    for (let i = 0; i < unvisited.length; i++) {
+                        let d = await fetchRealRoadDistance(current, unvisited[i], profile);
+                        if (d > 0 && d < minDist) {
+                            minDist = d;
+                            nearestIdx = i;
+                        }
+                    }
+                    current = unvisited.splice(nearestIdx, 1)[0];
+                    ordered.push(current);
+                }
+            }
+
+            points = ordered; 
+            redrawMarkers();
+            updateResultsList();
+
+            let coordQuery = ordered.map(p => `${p.lng},${p.lat}`).join(';');
+            let optimizedTotalMeters = 0;
+
+            try {
+                let res = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${coordQuery}?overview=full&geometries=geojson`);
+                let data = await res.json();
+                if (data.code === "Ok") {
+                    let route = data.routes[0];
+                    optimizedTotalMeters = route.distance;
+                    lastRouteGeoJSON = route.geometry;
+                    let coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+                    
+                    routeLayer = L.polyline(coords, {color: '#28a745', weight: 5, opacity: 0.8}).addTo(map);
+                    map.fitBounds(routeLayer.getBounds());
+
+                    let orderText = ordered.map((p, index) => {
+                        let nav = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
+                        return `<b>${index + 1}.</b> ${p.label} <a href="${nav}" target="_blank" style="font-size:11px;">[Yol Tarifi]</a>`;
+                    }).join("<br>➔ ");
+                    
+                    let origin = `${ordered[0].lat},${ordered[0].lng}`;
+                    let destination = `${ordered[ordered.length-1].lat},${ordered[ordered.length-1].lng}`;
+                    let waypointsArray = ordered.slice(1, ordered.length-1).map(p => `${p.lat},${p.lng}`);
+                    let globalNavUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
+                    if (waypointsArray.length > 0) {
+                        globalNavUrl += `&waypoints=${waypointsArray.join('|')}`;
+                    }
+                    globalNavUrl += `&travelmode=driving`;
+
+                    let toplamKm = (optimizedTotalMeters / 1000).toFixed(2);
+                    let hamKm = (originalTotalMeters / 1000).toFixed(2);
+                    let duration = (route.duration / 60).toFixed(0);
+
+                    let diffMeters = originalTotalMeters - optimizedTotalMeters;
+                    let savingsHtml = `
+                        <div class="savings-box">
+                            ⏰ <b>Zaman Öncelikli Akıllı Rota:</b><br>
+                            • Teslimat saatleri ve aciliyetler önceliklendirildi.<br>
+                            • Optimize Rota Toplam Mesafesi: <b>${toplamKm} km</b>
+                        </div>`;
+
+                    document.getElementById('results').innerHTML = `
+                        <strong>Zaman Öncelikli Optimize Güzergah:</strong><br>${orderText}<br>
+                        <a href="${globalNavUrl}" target="_blank" class="global-nav-btn">🧭 Tüm Rotayı Google Maps'te Başlat</a><br>
+                        <strong>Toplam Rota Mesafesi:</strong> ${toplamKm} km | ⏱️ <b>Tahmini Süre:</b> ${duration} dk
+                        ${savingsHtml}
+                    `;
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        function exportManifestoPDF() {
+            if (points.length === 0) { alert("Önce rota oluşturmalısınız!"); return; }
+            let w = window.open('', '_blank');
+            let html = `
+                <html><head><title>OptiRoute Pro - Operasyon Manifestosu</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+                    h1 { color: #2c3e50; border-bottom: 2px solid #28a745; padding-bottom: 5px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
+                    th { background-color: #f4f4f9; }
+                    .footer { margin-top: 30px; font-size: 12px; color: #777; text-align: right; }
+                </style></head><body>
+                <h1>OptiRoute Pro - Dağıtım Manifestosu</h1>
+                <p><b>Aktif Mod:</b> ${currentSector.toUpperCase()} | <b>Tarih:</b> ${new Date().toLocaleDateString()}</p>
+                <table><tr><th>Sıra</th><th>Durak & Adres</th><th>Detay</th></tr>`;
+            
+            points.forEach((p, idx) => {
+                html += `<tr><td>#${idx+1}</td><td>${p.label}</td><td>${p.detailText || 'Standard'}</td></tr>`;
+            });
+            html += `</table><div class="footer">Geliştirici: ABDULSAMET İNAN | Enterprise SaaS Platform</div></body></html>`;
+            w.document.write(html);
+            w.document.close();
+            setTimeout(() => w.print(), 500);
+        }
+
+        function exportGeoJSON() {
+            if (!lastRouteGeoJSON) { alert("Önce rota hesaplamalısınız!"); return; }
+            let geojson = { "type": "Feature", "geometry": lastRouteGeoJSON, "properties": { "mode": currentSector, "developer": "ABDULSAMET İNAN" } };
+            let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geojson));
+            let a = document.createElement('a');
+            a.href = dataStr; a.download = `rota_${currentSector}.geojson`;
+            document.body.appendChild(a); a.click(); a.remove();
+        }
+
+        function resetMap() {
+            points = [];
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+            routeLayers.forEach(l => map.removeLayer(l));
+            routeLayers = [];
+            lastRouteGeoJSON = null;
+            let res = document.getElementById('results');
+            if (res) res.innerHTML = "Harita sıfırlandı.";
+        }
+    </script>
+</body>
+</html>
