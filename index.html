@@ -166,7 +166,9 @@
                 <div style="background: #eef2f7; padding: 10px; border-radius: 6px; display: flex; flex-direction: column; gap: 8px; position: relative;">
                     <label style="font-size: 12px; font-weight: bold; color: #2c3e50;">📍 Sipariş Aktarım Kanalları:</label>
                     
-                    <button class="secondary" onclick="simulateExternalAPIOrder()" style="background: #6f42c1; padding: 8px; font-size: 13px;">📥 Dış Sistemden Gelen Siparişi Simüle Et (API)</button>
+                    <!-- Dış Sistemden Gelen Sipariş Butonu (Yalnızca Kurye ve Kargo Modunda Gözükür) -->
+                    <button id="api-sim-btn" class="secondary" onclick="simulateExternalAPIOrder()" style="background: #6f42c1; padding: 8px; font-size: 13px; display: none;">📥 Dış Sistemden Gelen Siparişi Simüle Et (API)</button>
+                    
                     <button class="secondary" onclick="addCurrentGPSLocation()" style="background: #17a2b8; padding: 8px; font-size: 13px;">📍 Mevcut Konumumu (GPS) Ekle</button>
                     
                     <div style="display: flex; gap: 5px; position: relative; margin-top: 4px;">
@@ -237,6 +239,7 @@
             let badgeText = '';
             let specificHtml = '';
             let showFleet = 'none';
+            let showApiBtn = 'none';
 
             if (sector === 'gunluk') {
                 badgeText = '🚶‍♂️ Günlük Kullanım';
@@ -245,12 +248,14 @@
                 badgeText = '🏍️ Kurye / Zaman Pencereli Mod';
                 specificHtml = '<b>Kural:</b> 1. nokta Restorandır. Erken teslimat saatleri önceliklidir.';
                 showFleet = 'flex';
+                showApiBtn = 'block'; // Kurye modunda API simülasyonu aktif
                 let capLabel = document.getElementById('capacity-label');
                 if (capLabel) capLabel.innerText = 'Max Paket Adedi:';
             } else if (sector === 'kargo') {
                 badgeText = '📦 Kargo Filosu (Ağırlık & Hub)';
                 specificHtml = '<b>Kural:</b> Ağırlık kısıtı ve depoya dönüş aktif.';
                 showFleet = 'flex';
+                showApiBtn = 'block'; // Kargo modunda API simülasyonu aktif
                 let capLabel = document.getElementById('capacity-label');
                 if (capLabel) capLabel.innerText = 'Max Ağırlık (kg):';
             } else if (sector === 'otobus') {
@@ -266,6 +271,9 @@
             
             let fleetParams = document.getElementById('fleet-params');
             if (fleetParams) fleetParams.style.display = showFleet;
+
+            let apiBtn = document.getElementById('api-sim-btn');
+            if (apiBtn) apiBtn.style.display = showApiBtn;
         }
 
         function simulateExternalAPIOrder() {
@@ -274,7 +282,7 @@
             let externalOrdersPool = [
                 { lat: 41.0255, lng: 29.0123, address: "Üsküdar İskele Cad. No:5", time: "13:00", packages: 1 },
                 { lat: 40.9901, lng: 29.0250, address: "Kadıköy Moda Cad. No:42", time: "13:15", packages: 2 },
-                { lat: 41.0422, lng: 29.0065, address: "Beşiktaş Yıldız Mah. No:10", time: "12:30", packages: 1 }, // Daha erken saat
+                { lat: 41.0422, lng: 29.0065, address: "Beşiktaş Yıldız Mah. No:10", time: "12:30", packages: 1 },
                 { lat: 41.0122, lng: 28.9450, address: "Fatih Millet Cad. No:15", time: "13:45", packages: 1 }
             ];
 
@@ -391,7 +399,7 @@
             let detailVal = 1;
             let detailLabel = 'Standard';
             let deliveryTime = 'Esnek';
-            let timeMins = 9999; // Esnek saatler en sonda değerlendirilir
+            let timeMins = 9999;
 
             if (currentSector === 'kurye' && points.length > 0) {
                 let pCount = prompt(`"${label}" için paket adedi:`, "1");
@@ -509,7 +517,6 @@
             return total;
         }
 
-        // --- ZAMAN PENCERELİ VE MESAFE HİBRİT AKILLI OPTİMİZASYON ---
         async function calculateOptimizedRoute() {
             if (points.length < 2) { alert("En az 2 nokta gerekli!"); return; }
             let profile = document.getElementById('profile-select').value;
@@ -538,13 +545,9 @@
                     let bestIdx = 0;
                     let bestScore = Infinity;
 
-                    // Hibrit Puanlama: Zaman Pencereleri (Aciliyet) + Mesafe Faktörü
                     for (let i = 0; i < unvisited.length; i++) {
                         let dist = await fetchRealRoadDistance(current, unvisited[i], profile);
                         let timeVal = unvisited[i].timeMinutes !== undefined ? unvisited[i].timeMinutes : 9999;
-                        
-                        // Formül: Saat ne kadar erkense puanı o kadar düşer (öncelik kazanır)
-                        // Mesafe de işin içine katılarak mantıklı bir rota çizilir
                         let score = (timeVal * 15) + (dist * 0.05); 
 
                         if (score < bestScore) {
