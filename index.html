@@ -108,7 +108,7 @@
     <div id="sector-modal">
         <div class="modal-content">
             <h3>OptiRoute Pro - Mod Seçimi</h3>
-            <p style="font-size: 13px; color: #666;">Zaman Pencereli Akıllı Rota Optimizasyonunu aktif edin.</p>
+            <p style="font-size: 13px; color: #666;">Zaman Pencereli Akıllı Rota ve Tasarruf Analizini aktif edin.</p>
             
             <button class="sector-btn gunluk" onclick="selectSector('gunluk')">
                 <span>🚶‍♂️ Günlük Kullanım (Akıllı Optimizasyon)</span> <span>➔</span>
@@ -166,9 +166,7 @@
                 <div style="background: #eef2f7; padding: 10px; border-radius: 6px; display: flex; flex-direction: column; gap: 8px; position: relative;">
                     <label style="font-size: 12px; font-weight: bold; color: #2c3e50;">📍 Sipariş Aktarım Kanalları:</label>
                     
-                    <!-- Dış Sistemden Gelen Sipariş Butonu (Yalnızca Kurye ve Kargo Modunda Gözükür) -->
                     <button id="api-sim-btn" class="secondary" onclick="simulateExternalAPIOrder()" style="background: #6f42c1; padding: 8px; font-size: 13px; display: none;">📥 Dış Sistemden Gelen Siparişi Simüle Et (API)</button>
-                    
                     <button class="secondary" onclick="addCurrentGPSLocation()" style="background: #17a2b8; padding: 8px; font-size: 13px;">📍 Mevcut Konumumu (GPS) Ekle</button>
                     
                     <div style="display: flex; gap: 5px; position: relative; margin-top: 4px;">
@@ -201,8 +199,8 @@
 
             <!-- Sürücü Paneli & Tasarruf Sonuç Paneli -->
             <div class="panel">
-                <strong>Sürücü Paneli & Zaman Öncelikli Rota:</strong>
-                <div style="font-size: 11px; color: #666; margin-top: 2px;">Teslimat saati daha erken olan siparişler mesafeden bağımsız önceliklendirilir.</div>
+                <strong>Sürücü Paneli & Tasarruf Analizi:</strong>
+                <div style="font-size: 11px; color: #666; margin-top: 2px;">Seçtiğiniz ham sıra ile zaman/mesafe optimize rota arasındaki fark hesaplanır.</div>
                 <div id="results" style="margin-top: 8px;">Lütfen önce mod seçip adres ekleyin.</div>
             </div>
         </div>
@@ -248,14 +246,14 @@
                 badgeText = '🏍️ Kurye / Zaman Pencereli Mod';
                 specificHtml = '<b>Kural:</b> 1. nokta Restorandır. Erken teslimat saatleri önceliklidir.';
                 showFleet = 'flex';
-                showApiBtn = 'block'; // Kurye modunda API simülasyonu aktif
+                showApiBtn = 'block';
                 let capLabel = document.getElementById('capacity-label');
                 if (capLabel) capLabel.innerText = 'Max Paket Adedi:';
             } else if (sector === 'kargo') {
                 badgeText = '📦 Kargo Filosu (Ağırlık & Hub)';
                 specificHtml = '<b>Kural:</b> Ağırlık kısıtı ve depoya dönüş aktif.';
                 showFleet = 'flex';
-                showApiBtn = 'block'; // Kargo modunda API simülasyonu aktif
+                showApiBtn = 'block';
                 let capLabel = document.getElementById('capacity-label');
                 if (capLabel) capLabel.innerText = 'Max Ağırlık (kg):';
             } else if (sector === 'otobus') {
@@ -525,6 +523,7 @@
             routeLayers = [];
             if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
 
+            // 1. Kullanıcının ham (eklediği) sırasının mesafesini hesapla
             let originalSequence = [...points];
             if ((currentSector === 'kurye' || currentSector === 'kargo') && originalSequence.length > 2) {
                 let depot = originalSequence[0];
@@ -533,6 +532,7 @@
             }
             let originalTotalMeters = await calculateRouteDistanceForSequence(originalSequence, profile);
 
+            // 2. Zaman Pencereli & Hibrit Akıllı Optimizasyon ile en iyi sırayı bul
             let ordered = [];
             let unvisited = [...points];
 
@@ -614,13 +614,23 @@
                     let hamKm = (originalTotalMeters / 1000).toFixed(2);
                     let duration = (route.duration / 60).toFixed(0);
 
+                    // 3. Tasarruf Hesaplaması
                     let diffMeters = originalTotalMeters - optimizedTotalMeters;
-                    let savingsHtml = `
-                        <div class="savings-box">
-                            ⏰ <b>Zaman Öncelikli Akıllı Rota:</b><br>
-                            • Teslimat saatleri ve aciliyetler önceliklendirildi.<br>
-                            • Optimize Rota Toplam Mesafesi: <b>${toplamKm} km</b>
-                        </div>`;
+                    let savingsHtml = "";
+
+                    if (diffMeters > 10) {
+                        let diffKm = (diffMeters / 1000).toFixed(2);
+                        let percent = ((diffMeters / originalTotalMeters) * 100).toFixed(1);
+                        savingsHtml = `
+                            <div class="savings-box">
+                                🎉 <b>Zaman & Rota Optimizasyonu Tasarrufu:</b><br>
+                                • Ham Seçtiğiniz Sıra: <b>${hamKm} km</b><br>
+                                • Akıllı Optimize Rota: <b>${toplamKm} km</b><br>
+                                🚀 <b>Net Kazanç:</b> ${diffKm} km daha kısa (%${percent} mesafe/yakıt tasarrufu)!
+                            </div>`;
+                    } else {
+                        savingsHtml = `<div class="savings-box" style="background:#e3f2fd; border-left-color:#007bff; color:#0d47a1;">ℹ️ Eklediğiniz sıra zaten en verimli zamansal/mesafesel sıraya çok yakındı. (${toplamKm} km)</div>`;
+                    }
 
                     document.getElementById('results').innerHTML = `
                         <strong>Zaman Öncelikli Optimize Güzergah:</strong><br>${orderText}<br>
